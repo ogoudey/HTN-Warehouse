@@ -4,9 +4,9 @@ from dataclasses import dataclass
 
 
 
-logging = False
+logging = True
 
-transmitting_to_Unity = True
+transmitting_to_Unity = False
 if transmitting_to_Unity:
     from transmitter import ThroughMessage
     
@@ -395,7 +395,7 @@ if __name__ == "__main__":
         through_thread.start()
         while not through_thread.up:
             time.sleep(1)
-    time.sleep(3.0)
+        time.sleep(3.0)
     while not goal():
         log(state(), verbose=True)
         if transmitting_to_Unity:
