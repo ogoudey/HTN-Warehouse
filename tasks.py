@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 logging = False
 
-transmitting_to_Unity = False
+transmitting_to_Unity = True
 if transmitting_to_Unity:
     from transmitter import ThroughMessage
     
@@ -36,13 +36,15 @@ class Location:
 
 @dataclass
 class Container:
+    name:str
     location: Location | None = None
 
     def __repr__(self):
-        return f"Container #{str(id(self))[-4:]}: {self.location.index}"
+        return f"{self.name}: {self.location.index}"
+        #return f"Container #{str(id(self))[-4:]}: {self.location.index}"
 
     def as_moved(self, l:Location):
-        return Container(l)
+        return Container(self.name, l)
 
 @dataclass
 class FuelLevel:
@@ -50,26 +52,29 @@ class FuelLevel:
 
 @dataclass
 class Robot:
+    name: str
     location: Location | None = None
     fuel: FuelLevel | None = None
     carrying: Container | None = None
     projected_state: "Robot" = None
 
     def __repr__(self):
+        return f"{self.name}: {self.location.index}"
+
         if self.carrying:
             return f"Robot: {self.location.index} and carrying: {id(self.carrying)}"
         return f"Robot: {self.location.index}"
     
     def as_carrying(self, c: Container):
-        self.projected_state = Robot(self.location, self.fuel, carrying=c)
-        return Robot(self.location, self.fuel, carrying=c, projected_state=self.projected_state)
+        self.projected_state = Robot(self.name, self.location, self.fuel, carrying=c)
+        return Robot(self.name, self.location, self.fuel, carrying=c, projected_state=self.projected_state)
 
     def as_moved(self, l:Location):
         if self.carrying:
-            self.projected_state = Robot(l, self.fuel, carrying=Container(l))
-            return Robot(l, self.fuel, carrying=Container(l), projected_state=self.projected_state)
-        self.projected_state = Robot(l, self.fuel)
-        return Robot(l, self.fuel, projected_state=self.projected_state)
+            self.projected_state = Robot(self.name, l, self.fuel, carrying=Container(self.carrying.name, l))
+            return Robot(self.name, l, self.fuel, carrying=Container(self.carrying.name, l), projected_state=self.projected_state)
+        self.projected_state = Robot(self.name, l, self.fuel)
+        return Robot(self.name, l, self.fuel, projected_state=self.projected_state)
 
 def precondition(func):
     func.is_precondition = True
@@ -335,11 +340,11 @@ if __name__ == "__main__":
     S.connect(lC, lD)
     S.connect(lD, lA)
 
-    r: Robot = Robot()
+    r: Robot = Robot("Robot")
     S.at(r, lA)
-    c1: Container = Container()
+    c1: Container = Container("ContainerA")
     S.container_at(c1, lA)
-    c2: Container = Container()
+    c2: Container = Container("ContainerB")
     
     S.container_at(c2, lC)
     fuel: FuelLevel = FuelLevel()
@@ -385,13 +390,15 @@ if __name__ == "__main__":
     log(r)
 
     if transmitting_to_Unity:
-        shared = {"target_message": "stop"}
-        through_thread = ThroughMessage(self.shared)
+        shared = {"target_message": str(state())}
+        through_thread = ThroughMessage(shared)
         through_thread.start()
-
+        while not through_thread.up:
+            time.sleep(1)
+    time.sleep(3.0)
     while not goal():
         log(state(), verbose=True)
         if transmitting_to_Unity:
-            
-            shared["target_message":]
+            shared["target_message"] = str(state())
+            time.sleep(3.0)
         plan.pop(0)(arguments)

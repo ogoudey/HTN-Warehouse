@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using UnityEngine;
-
+using System.Collections;
 public class ReceiverBehaviour : MonoBehaviour
 {
     [SerializeField] private int port = 5000;
@@ -10,9 +10,48 @@ public class ReceiverBehaviour : MonoBehaviour
     private readonly object messageLock = new object();
     private Queue<Dictionary<string, string>> parsedMessages = new Queue<Dictionary<string, string>>();
 
+    public GameObject Robot;
+    public GameObject ContainerA;
+    public GameObject ContainerB;
+
+    // Locations (Transforms)
+    public Transform LocationA;
+    public Transform LocationB;
+    public Transform LocationC;
+    public Transform LocationD;
+
+    // Dictionary linking names to objects
+    private Dictionary<string, GameObject> objects;
+    private Dictionary<string, Transform> locations;
+
+
     void Start()
     {
         receiver = new Receiver(port);
+
+        Robot = GameObject.Find("Robot");
+        ContainerA = GameObject.Find("ContainerA");
+        ContainerB = GameObject.Find("ContainerZ");
+        Debug.Log(ContainerB.transform);
+
+        LocationA = GameObject.Find("A").transform;
+        LocationB = GameObject.Find("B").transform;
+        LocationC = GameObject.Find("C").transform;
+        LocationD = GameObject.Find("D").transform;
+
+        objects = new Dictionary<string, GameObject>
+        {
+            { "Robot", Robot },
+            { "ContainerA", ContainerA },
+            { "ContainerB", ContainerB },
+        };
+        locations = new Dictionary<string, Transform>
+        {
+            { "A", LocationA },
+            { "B", LocationB },
+            { "C", LocationC },
+            { "D", LocationD }
+        };
 
         receiver.OnMessageReceived += HandleMessageReceived;
         receiver.Start();
@@ -62,8 +101,15 @@ public class ReceiverBehaviour : MonoBehaviour
         foreach (var kvp in dict)
         {
             Debug.Log($"[{kvp.Key}] = {kvp.Value}");
+
+            GameObject obj = objects[kvp.Key];
+            Transform target = locations[kvp.Value];
+
+            obj.transform.SetPositionAndRotation(target.position, target.rotation);
+
         }
     }
+
 
     /// <summary>
     /// Converts "[Robot: C, Container #2432: D, ...]" into a dictionary.
