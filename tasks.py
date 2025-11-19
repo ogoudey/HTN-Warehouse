@@ -59,7 +59,7 @@ class Robot:
     projected_state: "Robot" = None
 
     def __repr__(self):
-        return f"{self.name}: {self.location.index}"
+        return f"{self.name}:{self.fuel.index}: {self.location.index}"
 
         if self.carrying:
             return f"Robot: {self.location.index} and carrying: {id(self.carrying)}"
@@ -75,6 +75,27 @@ class Robot:
             return Robot(self.name, l, self.fuel, carrying=Container(self.carrying.name, l), projected_state=self.projected_state)
         self.projected_state = Robot(self.name, l, self.fuel)
         return Robot(self.name, l, self.fuel, projected_state=self.projected_state)
+    
+    def refuel(self):
+        self.fuel.index = "H"
+
+    def as_refueled(self):
+        self.projected_state = Robot(self.name, self.location, FuelLevel("H"), projected_state=self.projected_state)
+        return Robot(self.name, self.location, FuelLevel("H"), projected_state=self.projected_state)
+
+    def with_reduced_fuel(self):
+        
+        self.projected_state = Robot(self.name, self.location, FuelLevel(self.reduce_fuel()), projected_state=self.projected_state)
+        return Robot(self.name, self.location, FuelLevel(self.reduce_fuel()), projected_state=self.projected_state)
+
+    def reduce_fuel(self):
+        print(f"Reducing fuel from {self.fuel.index}")
+        if self.fuel.index == "H":
+            return "L"
+        elif self.fuel.index == "L":
+            return "0"
+        elif self.fuel.index == "0":
+            return "0"
 
 def precondition(func):
     func.is_precondition = True
@@ -138,11 +159,16 @@ class Task:
                     continue
                 except KeyError:
                     raise KeyError(f"Could not identify container to fulfill {self.func}.")
-            
+            if v == FuelLevel:
+                try:
+                    args.append(self.dict[k])
+                    continue
+                except KeyError:
+                    raise KeyError(f"Key {k} does not appear in task arguments: {self.dict}")
             try:
                 args.append(arguments[k])
             except KeyError:
-                raise KeyError(f"Key {k} does not appear in world arguments: {arguments}")
+                raise KeyError(f"Key {k} does not appear in world arguments: {arguments}. {v} not identified.")
         log(f"Args: {args}")
         self.func(*args)
     
@@ -167,6 +193,14 @@ def connected(l1: Location, l2: Location):
     return l1.next == l2
 
 @precondition
+def destination(c: Container, l: Location):
+    return container_at(c, l)
+
+@precondition
+def has(r: Robot, c: Container):
+    return r.carrying == c
+
+@precondition
 def container_at(c: Container, l: Location):
     return c.location == l
 
@@ -180,20 +214,28 @@ class PreconditionException(Exception):
 @compound_task
 def move(r: Robot, l1: Location, l2: Location):
     """Move the robot r from the location l1 to the location l2."""
+    if r.fuel.index == "0":
+        log(f"Robot is out of fuel - cannot move to {l2}")
+        raise PreconditionException(f"Robot is out of fuel - cannot move to {l2}")
+        return False
     log(f"Moving from {l1} to {l2}", end="")
     if not r.location.index == l1.index:
         raise PreconditionException(f"Robot at {r.location.index}, not {l1.index}")
+    
     r.location = l2
     if r.carrying:
         log(f" while also carrying {r.carrying} to {l2}")
         r.carrying.location = l2
     else:
         log("")
+    r.fuel.index = r.reduce_fuel()
+    return True
 
 @primitive
-def refuel(r: Robot, level: float):
+def refuel(r: Robot, level: FuelLevel):
     """Set the fuel level of the robot r to the level"""
-    r.fuel = level
+    r.fuel.index = level.index
+    return True
 
 @primitive
 def pick_up(r: Robot, c: Container):
@@ -203,6 +245,7 @@ def pick_up(r: Robot, c: Container):
     log(f"{r} is picking up {c}")
     r.carrying = c
     c.location = r.location
+    return True
 
 @primitive
 def drop_down(r: Robot, c: Container):
@@ -210,6 +253,7 @@ def drop_down(r: Robot, c: Container):
     log(f"{r} is dropping {c}")
     r.carrying = None
     c.location = c.location
+    return True
 
 @compound_task
 def single_delivery(c: Container, l1: Location, l2: Location):
@@ -258,18 +302,32 @@ def m_single_delivered(
     l2 = task["l1"]
     l3 = task["l2"]
     global r
+    
     if r.projected_state:
         r = r.projected_state
     l1 = r.location
     log(f"m_single_delivered: {task.dict}", end=" ")
+    # Add refuels intermitently - hacky?
     return [
         Task(move, {"r": r, "l1": l1, "l2": l2}),
+        Task(refuel, {"r": r, "level": FuelLevel("H")}),
         Task(pick_up, {"r": r.as_moved(l2), "c": c}),
         Task(move, {"r": r.as_carrying(c).as_moved(l2), "l1": l2, "l2": l3}),
+        Task(refuel, {"r": r.as_carrying(c).as_moved(l3), "level": FuelLevel("H")}),
         Task(drop_down, {"r": r.as_moved(l3), "c": c.as_moved(l3)})
     ]
 
+class NoCompoundException(Exception):
+    pass
+
+
 class NotCompoundException(Exception):
+    pass
+
+class FuelFullException(Exception):
+    pass
+
+class MovingWithLowFuelException(Exception):
     pass
 
 @method
@@ -281,12 +339,18 @@ def m_move(
     if task.func.is_primitive:
         raise NotCompoundException(f"Task is not compound. No method needed.")
     
-    r = task["r"]
+    r: Robot = task["r"]
     #if r.projected_state:
     #    r = r.projected_state
+    log(f"Fuel at move {r.fuel.index}")
     l1 = task["l1"]
     l2 = task["l2"]
 
+    if r.fuel.index == "0":
+        raise TaskException(f"Won't m_move from {l1} with no fuel.")
+
+    #if r.fuel.index == "L":
+    #    raise TaskException(f"Won't m_move from {l1} with low fuel.")
 
     log(f"m_move: {task.dict}", end=" ")
     if l1 == l2:
@@ -300,8 +364,29 @@ def m_move(
     else:
         return [
             Task(move, {"r": r, "l1": l1, "l2": l1_point_5}),
-            Task(move, {"r": r.as_moved(l1_point_5), "l1": l1_point_5, "l2": l2})
+            Task(move, {"r": r.as_moved(l1_point_5).with_reduced_fuel(), "l1": l1_point_5, "l2": l2})
         ]
+
+@method
+def m_refuel(
+    task=Task
+) -> List[Task]:
+    if not task.func == move:
+        raise TaskException(f"Task is a {task.func.__name__}, not {single_delivery.__name__}")
+    r: Robot = task["r"]
+    l1 = task["l1"]
+    l2 = task["l2"]
+    
+    
+    if r.fuel.index == "H":
+        raise FuelFullException("Fuel is already full. No need to refuel.")
+
+
+    return [
+            Task(refuel, {"r": r, "level": FuelLevel("H")}),
+            Task(move, {"r": r.as_refueled(), "l1": l1, "l2": l2})
+        ]
+    
 
 
 def is_solution(plan: List[Task]):
@@ -314,7 +399,7 @@ def get_compound(plan: List[Task]):
     for task in plan:
         if not task.is_primitive:
             return task
-    return is_solution(plan) # a double-check
+    raise NoCompoundException(f"No compound found in plan {plan}, yet not solved (??)")
 
 class S:
     @staticmethod
@@ -330,7 +415,12 @@ class S:
     def connect(l1, l2):
         l1.next = l2
 
+class ActionFailedException(Exception):
+    pass
+
 if __name__ == "__main__":
+
+    ### Initialize environment ###
     lA = Location("A")
     lB = Location("B")
     lC = Location("C")
@@ -347,22 +437,27 @@ if __name__ == "__main__":
     c2: Container = Container("ContainerB")
     
     S.container_at(c2, lC)
-    fuel: FuelLevel = FuelLevel()
+    fuel: FuelLevel = FuelLevel("L")
     S.fuel_level(r, fuel)
 
+
+    ### Task assignment ###
     root: List[Task] = [multi_delivery(c1, lD, c2, lB)]
+
+    ### Solving ###
     root_p = f"{root[0].func.__name__}"
     log(root_p, end="\r")
     plan = root
     while not is_solution(plan):
         compound: Task = get_compound(plan)
         for m in methods:
+            input()
             try:
-                #log(f"Trying {m}")
+                log(f"Trying {m}")
                 subtasks: List[Task] = m(compound)
-                #log(f"Turned {compound.func.__name__} into {[task.func.__name__ for task in subtasks]}")
+                log(f"Turned '{compound.func.__name__}' into {[task.func.__name__ for task in subtasks]}")
             except TaskException as e:
-                #log(e)
+                log(e)
                 continue
             
             idx = plan.index(compound)
@@ -374,6 +469,7 @@ if __name__ == "__main__":
             break
     log(f"{root_p} => {[task.func.__name__ for task in plan]}")
 
+    ### Execution ###
     def goal():
         if container_at(c1, lD) and container_at(c2, lB) and not r.carrying == c1 and not r.carrying == c2:
             return True
@@ -382,6 +478,7 @@ if __name__ == "__main__":
     def state():
         return [r, c1, c2]
 
+    ### (Reinitialize) ###
     S.at(r, lA)
     S.container_at(c1, lA)    
     S.container_at(c2, lC)
@@ -396,9 +493,13 @@ if __name__ == "__main__":
         while not through_thread.up:
             time.sleep(1)
         time.sleep(3.0)
+
     while not goal():
-        log(state(), verbose=True)
         if transmitting_to_Unity:
             shared["target_message"] = str(state())
             time.sleep(3.0)
-        plan.pop(0)(arguments)
+
+        log(state(), verbose=True)
+        succeeded = plan.pop(0)(arguments)
+
+            
