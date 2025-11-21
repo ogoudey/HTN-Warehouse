@@ -1,7 +1,12 @@
 # AI Planning Homework 3 - Task Network
-
+### Assumptions about the solver:
+The task is "solved" with decomposition. The process goes from left to right applying to the first **compound** task the first method that is **applicable**. The plan is considered to be a solution when all its tasks are **primitive**. Thus:
+```
+multi_delivery => ['refuel', 'pick_up', 'move', 'refuel', 'move', 'move', 'refuel', 'drop_down', 'move', 'refuel', 'move', 'move', 'refuel', 'pick_up', 'move', 'refuel', 'move', 'move', 'refuel', 'drop_down']
+```
 
 ## Running
+To get the above results, do:
 ```
 python3 tasks.py
 ```
