@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 
 
-logging = True
+logging = False
 
 transmitting_to_Unity = False
 if transmitting_to_Unity:
@@ -89,7 +89,7 @@ class Robot:
         return Robot(self.name, self.location, FuelLevel(self.reduce_fuel()), projected_state=self.projected_state)
 
     def reduce_fuel(self):
-        print(f"Reducing fuel from {self.fuel.index}")
+        log(f"Reducing fuel from {self.fuel.index}")
         if self.fuel.index == "H":
             return "L"
         elif self.fuel.index == "L":
@@ -266,9 +266,24 @@ def multi_delivery(c1: Container, l1: Location, c2: Container, l2: Location):
     return Task(multi_delivery, {"c1": c1, "l1": l1, "c2": c2, "l2": l2})
 
 
+### ========== Methods ========== ###
 
 class TaskException(Exception):
+    # A useful exception for when a method is not applicable; not representative of an error
     pass
+    
+class FuelFullException(Exception):
+    # Raised if fuel is full when m_refuel is applied. To stop infinite refueling.
+    pass
+
+class MovingWithLowFuelException(Exception):
+    # Another "helpful" exception to avoid plans where the robot runs out of fuel.
+    pass
+
+class NotCompoundException(Exception):
+    # A more-real exception, raised if method is applied to a primitive task.
+    pass
+
 
 @method
 def m_all_delivered(
@@ -317,19 +332,6 @@ def m_single_delivered(
         Task(drop_down, {"r": r.as_moved(l3), "c": c.as_moved(l3)})
     ]
 
-class NoCompoundException(Exception):
-    pass
-
-
-class NotCompoundException(Exception):
-    pass
-
-class FuelFullException(Exception):
-    pass
-
-class MovingWithLowFuelException(Exception):
-    pass
-
 @method
 def m_move(
     task=Task
@@ -377,10 +379,8 @@ def m_refuel(
     l1 = task["l1"]
     l2 = task["l2"]
     
-    
     if r.fuel.index == "H":
         raise FuelFullException("Fuel is already full. No need to refuel.")
-
 
     return [
             Task(refuel, {"r": r, "level": FuelLevel("H")}),
@@ -388,7 +388,7 @@ def m_refuel(
         ]
     
 
-
+### Helper functions for solver
 def is_solution(plan: List[Task]):
     for task in plan:
         if not task.is_primitive:
@@ -399,9 +399,12 @@ def get_compound(plan: List[Task]):
     for task in plan:
         if not task.is_primitive:
             return task
-    raise NoCompoundException(f"No compound found in plan {plan}, yet not solved (??)")
+
+###
+
 
 class S:
+    ### Class which sets Facts
     @staticmethod
     def at(r, l):
         r.location = l
@@ -415,8 +418,6 @@ class S:
     def connect(l1, l2):
         l1.next = l2
 
-class ActionFailedException(Exception):
-    pass
 
 if __name__ == "__main__":
 
@@ -444,14 +445,16 @@ if __name__ == "__main__":
     ### Task assignment ###
     root: List[Task] = [multi_delivery(c1, lD, c2, lB)]
 
-    ### Solving ###
-    root_p = f"{root[0].func.__name__}"
+    root_p = f"{root[0].func.__name__}" # for logging
     log(root_p, end="\r")
+
+    ### Solving/decomposition ###
+    
     plan = root
     while not is_solution(plan):
         compound: Task = get_compound(plan)
         for m in methods:
-            input()
+            #input() # Uncomment to step through decomposition
             try:
                 log(f"Trying {m}")
                 subtasks: List[Task] = m(compound)
@@ -470,12 +473,15 @@ if __name__ == "__main__":
     log(f"{root_p} => {[task.func.__name__ for task in plan]}")
 
     ### Execution ###
+    
     def goal():
+        # Execution helper
         if container_at(c1, lD) and container_at(c2, lB) and not r.carrying == c1 and not r.carrying == c2:
             return True
         return False
 
     def state():
+        # Helper for printing or setting state in Unity
         return [r, c1, c2]
 
     ### (Reinitialize) ###
