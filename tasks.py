@@ -470,7 +470,7 @@ if __name__ == "__main__":
             log(f"=> {[task.func.__name__ for task in subtasks]}")
             log(f"{root_p} => {[(task.func.__name__, task.dict) for task in plan]}", end="\r", flush=True)
             break
-    log(f"{root_p} => {[task.func.__name__ for task in plan]}")
+    log(f"{root_p} => {[task.func.__name__ for task in plan]}", verbose=True)
 
     ### Execution ###
     
