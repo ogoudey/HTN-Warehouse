@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 
 
-logging = False
+logging = True
 
 transmitting_to_Unity = False
 if transmitting_to_Unity:
@@ -436,11 +436,9 @@ if __name__ == "__main__":
     c1: Container = Container("ContainerA")
     S.container_at(c1, lA)
     c2: Container = Container("ContainerB")
-    
     S.container_at(c2, lC)
     fuel: FuelLevel = FuelLevel("L")
     S.fuel_level(r, fuel)
-
 
     ### Task assignment ###
     root: List[Task] = [multi_delivery(c1, lD, c2, lB)]
@@ -482,14 +480,14 @@ if __name__ == "__main__":
 
     def state():
         # Helper for printing or setting state in Unity
-        return [r, c1, c2]
+        return [r, c1, c2, fuel]
 
     ### (Reinitialize) ###
     S.at(r, lA)
     S.container_at(c1, lA)    
     S.container_at(c2, lC)
 
-    arguments = {"r": r, "c1": c1, "c2": c2}
+    arguments = {"r": r, "c1": c1, "c2": c2, "level": fuel}
     log(r)
 
     if transmitting_to_Unity:
